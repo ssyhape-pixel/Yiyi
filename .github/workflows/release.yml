@@ -1,0 +1,82 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          swift --version
+          xcodebuild -version | head -1
+
+      - name: Build arm64
+        run: swift build -c release --arch arm64
+
+      - name: Build x86_64
+        run: swift build -c release --arch x86_64
+
+      - name: Lipo universal
+        run: |
+          mkdir -p .build/universal
+          lipo -create \
+            .build/arm64-apple-macosx/release/Yiyi \
+            .build/x86_64-apple-macosx/release/Yiyi \
+            -output .build/universal/Yiyi
+          file .build/universal/Yiyi
+
+      - name: Assemble .app bundle
+        run: |
+          APP_DIR="build/译译.app"
+          rm -rf "$APP_DIR"
+          mkdir -p "$APP_DIR/Contents/MacOS"
+          mkdir -p "$APP_DIR/Contents/Resources"
+          cp .build/universal/Yiyi "$APP_DIR/Contents/MacOS/Yiyi"
+          cp Info.plist "$APP_DIR/Contents/Info.plist"
+
+      - name: Ad-hoc codesign
+        run: |
+          codesign --force --deep --sign - \
+            --entitlements Yiyi.entitlements \
+            --options runtime \
+            "build/译译.app" || \
+          codesign --force --deep --sign - "build/译译.app"
+          codesign -dv --verbose=2 "build/译译.app" 2>&1 | head -15
+
+      - name: Zip
+        run: |
+          cd build
+          zip -ry "Yiyi-${{ github.ref_name }}.zip" "译译.app"
+          ls -lh
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/Yiyi-${{ github.ref_name }}.zip
+          name: ${{ github.ref_name }}
+          body: |
+            ## 译译 ${{ github.ref_name }}
+
+            macOS universal binary（arm64 + x86_64），需要 macOS 13+。
+
+            ### 安装
+
+            1. 下载 `Yiyi-${{ github.ref_name }}.zip` 并解压
+            2. 把 `译译.app` 拖到「应用程序」（`/Applications`）
+            3. **首次打开**：在 Finder 里**右键** `译译.app` → 选「打开」→ 弹窗里再点「打开」
+               *（因为是 ad-hoc 签名，macOS Gatekeeper 会拦一次，之后双击就行）*
+            4. 菜单栏右上角出现「译」字图标 → 点开 →「设置…」→ 粘贴 DeepSeek API Key
+               （API Key 去 [platform.deepseek.com](https://platform.deepseek.com) 申请，账号需先充值）
+            5. 系统设置 → 隐私与安全性 → 辅助功能 → 勾选「译译」
+            6. 选中任意文字 → 按 **⌥D** 翻译，**Esc** 关闭
+          draft: false
+          prerelease: false
