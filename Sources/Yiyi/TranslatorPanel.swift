@@ -224,7 +224,7 @@ struct TranslationView: View {
                         .font(.system(size: 14))
                         .foregroundStyle(.tertiary)
                 } else {
-                    Text(viewModel.translated)
+                    Text(viewModel.translated.asMarkdown)
                         .font(.system(size: 15))
                         .foregroundStyle(.primary)
                         .textSelection(.enabled)
@@ -247,6 +247,16 @@ struct TranslationView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
             copied = false
         }
+    }
+}
+
+// MARK: - Markdown helper
+
+private extension String {
+    var asMarkdown: AttributedString {
+        var opts = AttributedString.MarkdownParsingOptions()
+        opts.interpretedSyntax = .inlineOnlyPreservingWhitespace
+        return (try? AttributedString(markdown: self, options: opts)) ?? AttributedString(self)
     }
 }
 
